@@ -1,0 +1,5 @@
+comment = 'rls_oso:  Created by pgx'
+default_version = '@CARGO_VERSION@'
+module_pathname = '$libdir/rls_oso'
+relocatable = false
+superuser = false
