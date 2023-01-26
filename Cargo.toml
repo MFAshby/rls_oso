@@ -16,7 +16,7 @@ pg15 = ["pgx/pg15", "pgx-tests/pg15" ]
 pg_test = []
 
 [dependencies]
-pgx = "=0.6.1"
+pgx = "=0.7.0"
 lazy_static = "=1.4.0"
 oso = "=0.26.4"
 
@@ -24,7 +24,7 @@ oso = "=0.26.4"
 oso = { path = "../oso/languages/rust/oso" }
 
 [dev-dependencies]
-pgx-tests = "=0.6.1"
+pgx-tests = "=0.7.0"
 
 [profile.dev]
 panic = "unwind"

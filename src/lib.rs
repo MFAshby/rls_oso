@@ -1,5 +1,5 @@
 use std::{sync::Mutex, collections::HashMap};
-use pgx::{prelude::*, AnyElement, IntoDatum, FromDatum};
+use pgx::{prelude::*, AnyElement, IntoDatum, FromDatum, pg_sys::Oid};
 use oso::{Oso, PolarValue, ExtClassBuilder, Class, ToPolar, Instance};
 use lazy_static::lazy_static;
 
@@ -13,7 +13,7 @@ lazy_static! {
         oso.load_str(POLICY).unwrap();
         Mutex::new(oso)
     };
-    static ref REGISTERED_TYPES: Mutex<HashMap<u32, Class>> = Mutex::new(HashMap::new());
+    static ref REGISTERED_TYPES: Mutex<HashMap<Oid, Class>> = Mutex::new(HashMap::new());
 }
 
 struct ToPolarWrapPolarValue(PolarValue);
@@ -22,6 +22,14 @@ impl ToPolar for ToPolarWrapPolarValue {
     fn to_polar(self) -> PolarValue {
         self.0
     }
+}
+
+/// Function to configure oso based row level security on a table
+fn oso_configure_rls(table_name: &str) {
+    // Spi::connect(|client| {
+    //     client.update(format!("alter table {} enable row level security", table_name), None, None)
+    //     .
+    // }).unwrap();
 }
 
 #[pg_extern]
@@ -38,18 +46,18 @@ fn oso_is_allowed(subject: &str, object: AnyElement, action: &str) -> bool {
 
         // I'm sure there's a typecache but we don't seem to have access via pg_sys
         let class_name = Spi::connect(|client| {
-            Ok(client
+            client
                 .select(
                     // Cast is required, typname is of type 'name' which pgx mishandles!
                     "SELECT typname::text FROM pg_type WHERE oid = $1",
                     None,
                     Some(vec![(PgBuiltInOids::OIDOID.oid(), object.oid().into_datum())]),
-                )
+                )?
                 .first()
-                .get_one::<String>())
-        }).unwrap();
+                .get_one::<String>()
+        }).unwrap().unwrap();
 
-        let mut cb = ExtClassBuilder::new(object.oid().into(), class_name);
+        let mut cb = ExtClassBuilder::new(object.oid().as_u32().into(), class_name);
         for (_, attinfo) in ht.attributes() {
             let name: String = attinfo.name().to_string();
             let name2 = name.clone();
@@ -88,7 +96,7 @@ fn oso_is_allowed(subject: &str, object: AnyElement, action: &str) -> bool {
         };
         (k, v)
     }).collect();
-    let instance = Instance::new_ext(hm_values, object.oid().into(), "foo"); // Debug name isn't important.
+    let instance = Instance::new_ext(hm_values, object.oid().as_u32().into(), "foo"); // Debug name isn't important.
     oso.is_allowed(subject, action, ToPolarWrapPolarValue(PolarValue::Instance(instance))).unwrap()
 }
 
