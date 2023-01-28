@@ -19,6 +19,7 @@ pg_test = []
 pgx = "=0.7.0"
 lazy_static = "=1.4.0"
 oso = "=0.26.4"
+askama = "=0.11.1"
 
 [patch.crates-io]
 oso = { path = "../oso/languages/rust/oso" }

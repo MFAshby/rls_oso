@@ -2,10 +2,11 @@ use std::{sync::Mutex, collections::HashMap};
 use pgx::{prelude::*, AnyElement, IntoDatum, FromDatum, pg_sys::Oid};
 use oso::{Oso, PolarValue, ExtClassBuilder, Class, ToPolar, Instance};
 use lazy_static::lazy_static;
+use askama::Template;
 
 pgx::pg_module_magic!();
 
-static POLICY: &'static str = r#"allow(subject, "read", object: comments) if object.author = subject;"#;
+static POLICY: &'static str = r#"allow(subject, "select", object: comments) if object.author = subject;"#;
 
 lazy_static! {
     static ref OSO: Mutex<Oso> = {
@@ -25,12 +26,45 @@ impl ToPolar for ToPolarWrapPolarValue {
 }
 
 /// Function to configure oso based row level security on a table
+#[pg_extern]
 fn oso_configure_rls(table_name: &str) {
-    // Spi::connect(|client| {
-    //     client.update(format!("alter table {} enable row level security", table_name), None, None)
-    //     .
-    // }).unwrap();
+    Spi::connect(|mut client| {
+        let table_cols: Vec<&str> = client.select("select attname::text from pg_attribute att join pg_class cls on cls.oid = att.attrelid and cls.relname = $1 and att.attnum > 0 order by attnum", None, 
+            Some(vec![(PgBuiltInOids::TEXTOID.oid(), table_name.into_datum())])).unwrap()
+        .map(|ht| {ht.get::<&str>(1).unwrap().unwrap()})
+        .collect();
+
+        client.update(&AlterTableEnableRls{ table_name }.render().unwrap(), None, None).unwrap(); 
+        // Actions match postgres' terminology
+        for action in &["insert","select", "update", "delete"] {
+            client.update(&DropPolicy{table_name, action}.render().unwrap(), None, None).unwrap();
+        }
+        client.update(&CreateInsertPolicy{table_name, table_cols: table_cols.as_slice()}.render().unwrap(), None,None).unwrap();
+        client.update(&CreateSelectPolicy{table_name, table_cols: table_cols.as_slice()}.render().unwrap(), None,None).unwrap();
+        client.update(&CreateUpdatePolicy{table_name, table_cols: table_cols.as_slice()}.render().unwrap(), None,None).unwrap();
+        client.update(&CreateDeletePolicy{table_name, table_cols: table_cols.as_slice()}.render().unwrap(), None,None).unwrap();
+        // Anything else to do? Nope.        
+    });
 }
+
+#[derive(Template)]
+#[template(path = "alter_table_enable_rls.sql", escape = "none")]
+struct AlterTableEnableRls<'a> {table_name: &'a str}
+#[derive(Template)]
+#[template(path = "drop_policy.sql", escape = "none")]
+struct DropPolicy<'a> {table_name: &'a str, action: &'a str}
+#[derive(Template)]
+#[template(path = "create_select_policy.sql", escape = "none")]
+struct CreateSelectPolicy<'a> {table_name: &'a str, table_cols: &'a [&'a str]}
+#[derive(Template)]
+#[template(path = "create_insert_policy.sql", escape = "none")]
+struct CreateInsertPolicy<'a> {table_name: &'a str, table_cols: &'a [&'a str]}
+#[derive(Template)]
+#[template(path = "create_update_policy.sql", escape = "none")]
+struct CreateUpdatePolicy<'a> {table_name: &'a str, table_cols: &'a [&'a str]}
+#[derive(Template)]
+#[template(path = "create_delete_policy.sql", escape = "none")]
+struct CreateDeletePolicy<'a> {table_name: &'a str, table_cols: &'a [&'a str]}
 
 #[pg_extern]
 fn oso_is_allowed(subject: &str, object: AnyElement, action: &str) -> bool {
@@ -105,11 +139,14 @@ fn oso_is_allowed(subject: &str, object: AnyElement, action: &str) -> bool {
 mod tests {
     use pgx::prelude::*;
 
+    // TODO how to test this?
+    // I can't use SPI to test because we're executing as a super-user, and also can't specify a user to run queries as.
+    // I _could_ just execute the function instead of testing the actual RLS policies, but it's not the same.
+    // 
     // #[pg_test]
     // fn test_hello_rls_oso() {
     //     assert_eq!("Hello, rls_oso", crate::hello_rls_oso());
     // }
-
 }
 
 #[cfg(test)]

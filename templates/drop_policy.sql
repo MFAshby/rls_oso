@@ -1,0 +1,1 @@
+drop policy if exists oso_{{ action }} on "{{ table_name }}"

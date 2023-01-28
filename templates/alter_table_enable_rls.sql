@@ -1,0 +1,1 @@
+alter table "{{ table_name }}" enable row level security
