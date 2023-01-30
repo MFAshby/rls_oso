@@ -2,24 +2,30 @@ drop table if exists comments cascade;
 drop user if exists foo;
 
 -- Setup a sample table to work with, with some data.
-CREATE TABLE public.comments (
+CREATE TABLE comments (
     url text NOT NULL,
     author text NOT NULL,
     comment text NOT NULL,
     ts timestamp with time zone DEFAULT now() NOT NULL
 );
 
-insert into public.comments (url, author, comment, ts) values
+insert into comments (url, author, comment, ts) values
 ('https://mfashby.net/foo', 'martin', 'hereis a comment!', '2022-12-27 22:08:34.139495+00'),
 ('foo', 'martin',  'hereis a comment!', '2022-12-27 22:47:33.977449+00'),
 ('foo', 'martin', 'I have something to say you know', '2022-12-27 23:21:46.542678+00'),
 ('foo', 'martin', 'I have something to say you know', '2022-12-27 23:21:49.283261+00'),
 ('foo', 'foo', 'foo! foo, foo. Foo.', '2022-12-27 23:25:49.283261+00');
 
-CREATE INDEX idx_comments_url ON public.comments USING btree (url);
+CREATE INDEX idx_comments_url ON comments USING btree (url);
 
 create extension rls_oso;
 select oso_configure_rls('comments');
+insert into oso_rules (rule, ord) values
+    ('allow("admin", _action, _object: comments);', 0),
+    ('allow(subject, "insert", object: comments) if object.author = subject;', 1),
+    ('allow(subject, "update", object: comments) if object.author = subject;', 2),
+    ('allow(subject, "delete", object: comments) if object.author = subject;', 3),
+    ('allow(_subject, "select", _object: comments)', 4);
 
 -- Create a test (non-super) user and grant some permissions
 create user foo;
