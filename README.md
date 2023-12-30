@@ -1,3 +1,7 @@
+# status
+
+this is a work-in-progress, proof-of-concept only. Do not use this code as-is, it will not work.
+
 # rls_oso
 
 Plugin to use [Oso](https://docs.osohq.com/) authorization library in postgres' [row level security](https://www.postgresql.org/docs/current/ddl-rowsecurity.html) policies.
